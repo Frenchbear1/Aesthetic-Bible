@@ -9,7 +9,13 @@
   <body>
     <div class="app-shell">
       <div class="window-bar">
-        <div class="window-title">Bible</div>
+        <div class="window-title-wrap">
+          <div class="window-title">Bible</div>
+          <button class="auth-btn" id="authToggle" type="button" aria-label="Sign in" title="Sign in">
+            <span class="auth-icon" aria-hidden="true">☁︎</span>
+          </button>
+        </div>
+        <div class="votd" id="verseOfDay">Verse of the day</div>
         <div class="window-controls">
           <button class="window-btn" id="appMinimize" type="button" aria-label="Minimize">─</button>
           <button class="window-btn" id="appMaximize" type="button" aria-label="Maximize">▢</button>
@@ -22,11 +28,12 @@
           <button class="tab" data-view="highlights">Highlights</button>
           <button class="tab" data-view="favorites">Favorites</button>
           <button class="tab" data-view="memorize">Memorize</button>
+          <button class="tab" data-view="notes">Notes</button>
         </div>
         <div class="topbar-actions">
           <div class="search">
             <div class="search-field">
-              <input id="searchInput" type="search" placeholder="Search NIV…" autocomplete="off" />
+              <input id="searchInput" type="search" placeholder="Search…" autocomplete="off" />
             </div>
           </div>
         </div>
@@ -49,6 +56,7 @@
             <button class="select-trigger" type="button" aria-haspopup="listbox"></button>
             <div class="select-menu" hidden></div>
           </div>
+          <button class="ghost" id="notesToggle" type="button" aria-pressed="false">Notes: Off</button>
           <div class="select-shell translation" data-select="translationSelect">
             <div class="select-label">Translation</div>
             <select id="translationSelect" class="native-select"></select>
@@ -64,6 +72,10 @@
 
       <main class="view" id="view-read" data-view="read">
         <div class="cards" id="verseList"></div>
+        <div class="chapter-nav">
+          <button class="ghost nav-btn" id="prevChapterBtn" type="button">‹ Back</button>
+          <button class="ghost nav-btn" id="nextChapterBtn" type="button">Next ›</button>
+        </div>
         <div class="search-results" id="searchResults" hidden>
           <div class="results-header">
             <div>Search results</div>
@@ -140,21 +152,40 @@
         <div class="cards" id="memorizeList"></div>
       </main>
 
+      <main class="view" id="view-notes" data-view="notes" hidden>
+        <div class="highlight-toolbar">
+          <div class="select-shell" data-select="notesSort">
+            <div class="select-label">Sort by</div>
+            <select id="notesSort" class="native-select">
+              <option value="recency">Recency</option>
+              <option value="oldest">Oldest</option>
+              <option value="book">Book order</option>
+            </select>
+            <button class="select-trigger" type="button" aria-haspopup="listbox"></button>
+            <div class="select-menu" hidden></div>
+          </div>
+        </div>
+        <div class="cards" id="notesList"></div>
+      </main>
+
       <div class="palette-floating" id="palette" hidden>
         <div class="palette-title">Highlight color</div>
         <div class="palette-row">
           <div class="palette-grid" id="paletteGrid"></div>
         </div>
         <div class="palette-row palette-actions">
-          <button id="favoriteBtn" class="pill" type="button">Favorite</button>
-          <button id="memorizeBtn" class="pill" type="button">Memorize</button>
+          <button id="favoriteBtn" class="pill" type="button">★ Favorite</button>
+          <button id="memorizeBtn" class="pill" type="button">🧠 Memorize</button>
           <button id="removeHighlightPill" class="pill" type="button">Remove</button>
-          <button id="copyBtn" class="pill" type="button">Copy</button>
+          <button id="noteBtn" class="pill" type="button">✎ Note</button>
+          <button id="copyBtn" class="pill" type="button">📋 Copy</button>
           <button id="searchOriginalBtn" class="pill" type="button">Search original</button>
         </div>
       </div>
 
     </div>
+
+    <button class="ghost xref-floating" id="xrefBackFloating" type="button" hidden>Go back</button>
 
     <div class="startup-overlay" id="startupOverlay" hidden>
       <div class="startup-card" id="startupCard" role="dialog" aria-modal="true" aria-labelledby="startupTitle">
@@ -175,6 +206,30 @@
       </div>
     </div>
 
-    <script src="app.js"></script>
+    <div class="auth-modal" id="authModal" hidden>
+      <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+        <div class="auth-header">
+          <div class="auth-title" id="authTitle">Sign in</div>
+          <button class="ghost auth-close" id="authClose" type="button" aria-label="Close">✕</button>
+        </div>
+        <button class="primary auth-google" id="authGoogle" type="button">Continue with Google</button>
+        <div class="auth-divider"><span>or</span></div>
+        <label class="auth-field">
+          <span>Email</span>
+          <input id="authEmail" name="email" type="email" placeholder="you@email.com" autocomplete="username email" />
+        </label>
+        <label class="auth-field">
+          <span>Password</span>
+          <input id="authPassword" name="password" type="password" placeholder="Password" autocomplete="current-password" />
+        </label>
+        <div class="auth-actions">
+          <button class="primary" id="authEmailSignIn" type="button">Sign in</button>
+          <button class="ghost" id="authEmailCreate" type="button">Create account</button>
+        </div>
+        <div class="auth-status" id="authStatus" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
   </body>
 </html>

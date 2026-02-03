@@ -1,5 +1,37 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+
 const MANIFEST_URL = "./data/manifest.json";
 const STORAGE_KEY = "cleanBibleApp.v1";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyADpeTsG3dqArjfGaBa3CPu__qRRgHgO-Y",
+  authDomain: "bible-2e330.firebaseapp.com",
+  projectId: "bible-2e330",
+  storageBucket: "bible-2e330.firebasestorage.app",
+  messagingSenderId: "886807105919",
+  appId: "1:886807105919:web:c65d84d9d41a63f1e68a4a",
+  measurementId: "G-5T86DWN9VN"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 
 const bookOrder = [
   "Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth",
@@ -39,6 +71,11 @@ const state = {
   favorites: {},
   memorize: {},
   highlights: {},
+  notes: {},
+  crossRefs: new Map(),
+  crossRefsReady: false,
+  navStack: [],
+  xrefOrigin: null,
   searchIndex: [],
   searchQuery: "",
   manifest: [],
@@ -46,7 +83,9 @@ const state = {
   view: "read",
   startupEnabled: false,
   startupMemoryId: "",
-  startupActiveMemoryId: ""
+  startupActiveMemoryId: "",
+  lastUpdatedAt: 0,
+  notesVisible: false
 };
 
 const aliasOverrides = {
@@ -69,6 +108,75 @@ const aliasOverrides = {
 const bookAliasMap = buildBookAliases();
 const aliasKeys = Object.keys(bookAliasMap).sort((a, b) => b.length - a.length);
 const chapterVerseCache = new Map();
+const crossRefBookMap = {
+  GEN: "Genesis",
+  EXO: "Exodus",
+  LEV: "Leviticus",
+  NUM: "Numbers",
+  DEU: "Deuteronomy",
+  JOS: "Joshua",
+  JDG: "Judges",
+  RUT: "Ruth",
+  "1SA": "1 Samuel",
+  "2SA": "2 Samuel",
+  "1KI": "1 Kings",
+  "2KI": "2 Kings",
+  "1CH": "1 Chronicles",
+  "2CH": "2 Chronicles",
+  EZR: "Ezra",
+  NEH: "Nehemiah",
+  EST: "Esther",
+  JOB: "Job",
+  PSA: "Psalms",
+  PRO: "Proverbs",
+  ECC: "Ecclesiastes",
+  SNG: "Song of Songs",
+  SOG: "Song of Songs",
+  ISA: "Isaiah",
+  JER: "Jeremiah",
+  LAM: "Lamentations",
+  EZK: "Ezekiel",
+  DAN: "Daniel",
+  HOS: "Hosea",
+  JOL: "Joel",
+  AMO: "Amos",
+  OBA: "Obadiah",
+  JON: "Jonah",
+  MIC: "Micah",
+  NAM: "Nahum",
+  HAB: "Habakkuk",
+  ZEP: "Zephaniah",
+  HAG: "Haggai",
+  ZEC: "Zechariah",
+  MAL: "Malachi",
+  MAT: "Matthew",
+  MAR: "Mark",
+  LUK: "Luke",
+  JOH: "John",
+  ACT: "Acts",
+  ROM: "Romans",
+  "1CO": "1 Corinthians",
+  "2CO": "2 Corinthians",
+  GAL: "Galatians",
+  EPH: "Ephesians",
+  PHP: "Philippians",
+  COL: "Colossians",
+  "1TH": "1 Thessalonians",
+  "2TH": "2 Thessalonians",
+  "1TI": "1 Timothy",
+  "2TI": "2 Timothy",
+  TIT: "Titus",
+  PHM: "Philemon",
+  HEB: "Hebrews",
+  JAS: "James",
+  "1PE": "1 Peter",
+  "2PE": "2 Peter",
+  "1JO": "1 John",
+  "2JO": "2 John",
+  "3JO": "3 John",
+  JUD: "Jude",
+  REV: "Revelation"
+};
 const translationLabels = {
   "KING JAMES BIBLE": "KJV",
   "ENGLISH STANDARD VERSION": "ESV",
@@ -92,6 +200,7 @@ const elements = {
   favoriteBtn: document.getElementById("favoriteBtn"),
   copyBtn: document.getElementById("copyBtn"),
   searchOriginalBtn: document.getElementById("searchOriginalBtn"),
+  noteBtn: document.getElementById("noteBtn"),
   removeHighlightPill: document.getElementById("removeHighlightPill"),
   searchInput: document.getElementById("searchInput"),
   searchResults: document.getElementById("searchResults"),
@@ -99,13 +208,19 @@ const elements = {
   resultsCount: document.getElementById("resultsCount"),
   controls: document.querySelector(".controls"),
   topbarControls: document.getElementById("topbarControls"),
+  verseOfDay: document.getElementById("verseOfDay"),
+  prevChapterBtn: document.getElementById("prevChapterBtn"),
+  nextChapterBtn: document.getElementById("nextChapterBtn"),
+  xrefBackFloating: document.getElementById("xrefBackFloating"),
   highlightList: document.getElementById("highlightList"),
   favoriteList: document.getElementById("favoriteList"),
   memorizeList: document.getElementById("memorizeList"),
+  notesList: document.getElementById("notesList"),
   highlightFilter: document.getElementById("highlightFilter"),
   highlightSort: document.getElementById("highlightSort"),
   favoriteFilter: document.getElementById("favoriteFilter"),
   favoriteSort: document.getElementById("favoriteSort"),
+  notesSort: document.getElementById("notesSort"),
   viewRead: document.getElementById("view-read"),
   memorizeBtn: document.getElementById("memorizeBtn"),
   startupToggle: document.getElementById("startupToggle"),
@@ -115,18 +230,35 @@ const elements = {
   startupReference: document.getElementById("startupReference"),
   startupText: document.getElementById("startupText"),
   startupContinue: document.getElementById("startupContinue"),
+  startupShell: document.querySelector('[data-select="startupSelect"]'),
   windowMinimize: document.getElementById("windowMinimize"),
   windowMaximize: document.getElementById("windowMaximize"),
   windowClose: document.getElementById("windowClose"),
   appMinimize: document.getElementById("appMinimize"),
   appMaximize: document.getElementById("appMaximize"),
-  appClose: document.getElementById("appClose")
+  appClose: document.getElementById("appClose"),
+  notesToggle: document.getElementById("notesToggle"),
+  authToggle: document.getElementById("authToggle"),
+  authModal: document.getElementById("authModal"),
+  authClose: document.getElementById("authClose"),
+  authGoogle: document.getElementById("authGoogle"),
+  authEmail: document.getElementById("authEmail"),
+  authPassword: document.getElementById("authPassword"),
+  authEmailSignIn: document.getElementById("authEmailSignIn"),
+  authEmailCreate: document.getElementById("authEmailCreate"),
+  authStatus: document.getElementById("authStatus")
 };
 
 let copyResetTimer = null;
 let appClosed = false;
 let startupLocked = false;
 const customSelects = new Map();
+let authUser = null;
+let authReady = false;
+let cloudSaveTimer = null;
+let suppressCloudSave = false;
+let lastCloudPayload = "";
+const CLOUD_COLLECTION = "users";
 
 function makeVerseId(book, chapter, verse) {
   return `${book}|${chapter}|${verse}`;
@@ -137,11 +269,32 @@ function parseVerseId(id) {
   return { book, chapter, verse };
 }
 
-function saveState() {
-  const payload = {
+function normalizeNotes(notes) {
+  const normalized = {};
+  Object.keys(notes || {}).forEach((id) => {
+    const entry = notes[id];
+    if (!entry) return;
+    if (typeof entry === "string") {
+      const text = entry.trim();
+      if (!text) return;
+      normalized[id] = { text, ts: 0 };
+      return;
+    }
+    if (typeof entry === "object" && typeof entry.text === "string") {
+      const text = entry.text.trim();
+      if (!text) return;
+      normalized[id] = { text, ts: Number(entry.ts) || 0 };
+    }
+  });
+  return normalized;
+}
+
+function buildStatePayload(updatedAtOverride) {
+  return {
     favorites: state.favorites,
     memorize: state.memorize,
     highlights: state.highlights,
+    notes: normalizeNotes(state.notes),
     view: "read",
     currentBook: state.currentBook,
     currentChapter: state.currentChapter,
@@ -149,9 +302,37 @@ function saveState() {
     searchQuery: "",
     translationId: state.translationId,
     startupEnabled: state.startupEnabled,
-    startupMemoryId: state.startupMemoryId
+    startupMemoryId: state.startupMemoryId,
+    notesVisible: state.notesVisible,
+    updatedAt: updatedAtOverride ?? state.lastUpdatedAt,
+    version: 2
   };
+}
+
+function applyStatePayload(payload) {
+  state.favorites = payload.favorites || {};
+  state.memorize = payload.memorize || {};
+  state.highlights = payload.highlights || {};
+  state.notes = normalizeNotes(payload.notes || {});
+  state.view = "read";
+  state.currentBook = payload.currentBook || state.currentBook;
+  state.currentChapter = payload.currentChapter || state.currentChapter;
+  state.currentVerse = payload.currentVerse || state.currentVerse;
+  state.searchQuery = "";
+  state.translationId = payload.translationId || "";
+  state.startupEnabled = payload.startupEnabled || false;
+  state.startupMemoryId = payload.startupMemoryId || "";
+  state.notesVisible = payload.notesVisible || false;
+  state.lastUpdatedAt = Number(payload.updatedAt) || 0;
+}
+
+function saveState(options = {}) {
+  state.lastUpdatedAt = Date.now();
+  const payload = buildStatePayload();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  if (!options.skipCloud) {
+    scheduleCloudSave();
+  }
 }
 
 function loadState() {
@@ -159,19 +340,97 @@ function loadState() {
   if (!raw) return;
   try {
     const payload = JSON.parse(raw);
-    state.favorites = payload.favorites || {};
-    state.memorize = payload.memorize || {};
-    state.highlights = payload.highlights || {};
-    state.view = "read";
-    state.currentBook = payload.currentBook || state.currentBook;
-    state.currentChapter = payload.currentChapter || state.currentChapter;
-    state.currentVerse = payload.currentVerse || state.currentVerse;
-    state.searchQuery = "";
-    state.translationId = payload.translationId || "";
-    state.startupEnabled = payload.startupEnabled || false;
-    state.startupMemoryId = payload.startupMemoryId || "";
+    applyStatePayload(payload);
   } catch (err) {
     console.warn("Failed to parse saved state", err);
+  }
+}
+
+function mergeByTs(localMap = {}, remoteMap = {}) {
+  const merged = { ...localMap };
+  Object.keys(remoteMap).forEach((key) => {
+    const localEntry = localMap[key];
+    const remoteEntry = remoteMap[key];
+    if (!localEntry) {
+      merged[key] = remoteEntry;
+      return;
+    }
+    const localTs = Number(localEntry.ts) || 0;
+    const remoteTs = Number(remoteEntry.ts) || 0;
+    merged[key] = remoteTs > localTs ? remoteEntry : localEntry;
+  });
+  return merged;
+}
+
+function mergePayloads(localPayload = {}, remotePayload = {}) {
+  const localTs = Number(localPayload.updatedAt) || 0;
+  const remoteTs = Number(remotePayload.updatedAt) || 0;
+  const preferRemote = remoteTs > localTs;
+  return {
+    favorites: mergeByTs(localPayload.favorites, remotePayload.favorites),
+    memorize: mergeByTs(localPayload.memorize, remotePayload.memorize),
+    highlights: mergeByTs(localPayload.highlights, remotePayload.highlights),
+    notes: mergeByTs(normalizeNotes(localPayload.notes), normalizeNotes(remotePayload.notes)),
+    view: "read",
+    currentBook: preferRemote ? remotePayload.currentBook : localPayload.currentBook,
+    currentChapter: preferRemote ? remotePayload.currentChapter : localPayload.currentChapter,
+    currentVerse: preferRemote ? remotePayload.currentVerse : localPayload.currentVerse,
+    searchQuery: "",
+    translationId: preferRemote ? remotePayload.translationId : localPayload.translationId,
+    startupEnabled: preferRemote ? remotePayload.startupEnabled : localPayload.startupEnabled,
+    startupMemoryId: preferRemote ? remotePayload.startupMemoryId : localPayload.startupMemoryId,
+    notesVisible: preferRemote ? remotePayload.notesVisible : localPayload.notesVisible,
+    updatedAt: Math.max(localTs, remoteTs),
+    version: 2
+  };
+}
+
+function scheduleCloudSave() {
+  if (!authUser || suppressCloudSave) return;
+  if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(() => {
+    pushCloudState();
+  }, 1200);
+}
+
+async function pushCloudState() {
+  if (!authUser) return;
+  const payload = buildStatePayload();
+  const payloadString = JSON.stringify(payload);
+  if (payloadString === lastCloudPayload) return;
+  lastCloudPayload = payloadString;
+  try {
+    await setDoc(doc(db, CLOUD_COLLECTION, authUser.uid), {
+      state: payload,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (err) {
+    console.warn("Cloud save failed", err);
+  }
+}
+
+async function loadCloudState(user) {
+  if (!user) return;
+  try {
+    const snapshot = await getDoc(doc(db, CLOUD_COLLECTION, user.uid));
+    if (!snapshot.exists()) {
+      await pushCloudState();
+      return;
+    }
+    const remotePayload = snapshot.data()?.state || {};
+    const localPayload = buildStatePayload(state.lastUpdatedAt);
+    const merged = mergePayloads(localPayload, remotePayload);
+    suppressCloudSave = true;
+    applyStatePayload(merged);
+    saveState({ skipCloud: true });
+    suppressCloudSave = false;
+    scheduleCloudSave();
+    if (state.data) {
+      render();
+      if (startupLocked) updateStartupOverlayContent();
+    }
+  } catch (err) {
+    console.warn("Cloud load failed", err);
   }
 }
 
@@ -270,7 +529,12 @@ function loadData() {
         state.translationId = niv ? niv.id : (manifest[0] ? manifest[0].id : "");
       }
       buildTranslationSelect();
-      return loadTranslation(state.translationId);
+      return loadTranslation(state.translationId)
+        .then(() => {
+          renderVerses();
+          setTimeout(() => loadCrossRefs(), 0);
+          setTimeout(() => loadVerseOfDay(), 0);
+        });
     });
 }
 
@@ -418,6 +682,11 @@ function normalizeQuery(query) {
     .replace(/[^a-z0-9:\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeBookName(name) {
+  const key = normalizeQuery(name).replace(/\s+/g, " ");
+  return bookAliasMap[key] || name;
 }
 
 function escapeHtml(value) {
@@ -658,46 +927,78 @@ function render() {
   renderHighlights();
   renderFavorites();
   renderMemorize();
+  renderNotes();
   applyView(state.view);
 }
 
 function renderVerses() {
+  const openNoteIds = Array.from(document.querySelectorAll(".note-popup"))
+    .map((popup) => popup.dataset.verseId)
+    .filter(Boolean);
   const verses = state.data[state.currentBook][state.currentChapter];
   elements.verseList.innerHTML = "";
   const verseKeys = Object.keys(verses);
+  const memorizedIds = new Set();
+  Object.keys(state.memorize).forEach((memId) => {
+    const ids = state.memorize[memId]?.verseIds || [];
+    ids.forEach((id) => memorizedIds.add(id));
+  });
+  const notedIds = new Set(Object.keys(state.notes).filter((id) => state.notes[id]?.text?.trim()));
   const block = document.createElement("div");
   block.className = "paragraph";
   verseKeys.forEach((verse, index) => {
     const id = makeVerseId(state.currentBook, state.currentChapter, verse);
-    const span = document.createElement("span");
-    span.className = "verse-inline";
-    span.dataset.verseId = id;
+    const row = document.createElement("div");
+    row.className = "verse-inline";
+    row.dataset.verseId = id;
     if (state.selected.has(id)) {
-      span.classList.add("selected");
+      row.classList.add("selected");
     }
     if (state.highlights[id]) {
       const colorId = state.highlights[id].colorId;
       const color = palette.find((entry) => entry.id === colorId);
       if (color) {
-        span.classList.add("highlighted");
-        span.style.setProperty("--hl", color.hex);
+        row.classList.add("highlighted");
+        row.style.setProperty("--hl", color.hex);
         const prevId = index > 0 ? makeVerseId(state.currentBook, state.currentChapter, verseKeys[index - 1]) : null;
         const nextId = index < verseKeys.length - 1 ? makeVerseId(state.currentBook, state.currentChapter, verseKeys[index + 1]) : null;
         const prevSame = prevId && state.highlights[prevId]?.colorId === colorId;
         const nextSame = nextId && state.highlights[nextId]?.colorId === colorId;
-        if (prevSame) span.classList.add("join-top");
-        if (nextSame) span.classList.add("join-bottom");
+        if (prevSame) row.classList.add("join-top");
+        if (nextSame) row.classList.add("join-bottom");
       }
     }
     const favMark = state.favorites[id] ? "★" : "";
-    span.innerHTML = `<span class="verse-inline-text"><span class="verse-num">${verse}</span><span class="verse-body">${verses[verse]}</span></span><span class="fav-marker ${favMark ? "" : "hidden"}">★</span>`;
-    span.addEventListener("click", (event) => handleVerseClick(event, id));
-    block.appendChild(span);
+    const memMark = memorizedIds.has(id) ? "🧠" : "";
+    const hasXref = state.crossRefsReady && state.crossRefs.has(id);
+    const hasNote = notedIds.has(id);
+    const markers = `${favMark}${memMark}${hasNote ? "✎" : ""}`;
+    row.innerHTML = `
+      <div class="verse-inline-text">
+        <span class="verse-num">${verse}</span>
+        <span class="verse-body">${verses[verse]}</span>
+      </div>
+      <div class="marker-group ${markers || hasXref ? "" : "hidden"}">
+        ${favMark ? `<span class="marker star">★</span>` : ""}
+        ${memMark ? `<span class="marker brain">🧠</span>` : ""}
+        ${hasNote ? `<span class="marker note">✎</span>` : ""}
+        ${hasXref ? `<button class="xref-btn" type="button" data-verse-id="${id}" aria-label="Cross references">📖</button>` : ""}
+      </div>
+    `;
+    row.addEventListener("click", (event) => handleVerseClick(event, id));
+    block.appendChild(row);
   });
   elements.verseList.appendChild(block);
+  const noteIdsToOpen = state.notesVisible
+    ? Array.from(notedIds)
+    : openNoteIds;
+  noteIdsToOpen.forEach((id) => openNotePopup(id));
 }
 
 function handleVerseClick(event, id) {
+  if (event.target.closest(".xref-btn") || event.target.closest(".xref-popup") || event.target.closest(".marker.note")) {
+    return;
+  }
   const multi = event.ctrlKey || event.metaKey;
   const { book, chapter, verse } = parseVerseId(id);
   state.currentBook = book;
@@ -728,16 +1029,43 @@ function updateSelectionUI() {
   const count = state.selected.size;
   if (count === 0) {
     elements.palette.hidden = true;
+    elements.xrefBackFloating?.classList.remove("above-palette");
     renderVerses();
     return;
   }
   elements.palette.hidden = false;
+  elements.xrefBackFloating?.classList.add("above-palette");
   const hasHighlight = Array.from(state.selected).some((id) => state.highlights[id]);
   elements.removeHighlightPill.hidden = !hasHighlight;
   const allFavorite = Array.from(state.selected).every((id) => state.favorites[id]);
-  elements.favoriteBtn.textContent = allFavorite ? "Unfavorite" : "Favorite";
+  elements.favoriteBtn.textContent = allFavorite ? "★ Unfavorite" : "★ Favorite";
+  const memorizedIds = new Set();
+  Object.keys(state.memorize).forEach((memId) => {
+    const ids = state.memorize[memId]?.verseIds || [];
+    ids.forEach((id) => memorizedIds.add(id));
+  });
+  const allMemorized = Array.from(state.selected).every((id) => memorizedIds.has(id));
+  elements.memorizeBtn.textContent = allMemorized ? "🧠 Unmemorize" : "🧠 Memorize";
+  const firstSelected = Array.from(state.selected)[0];
+  const hasNote = firstSelected && state.notes[firstSelected]?.text;
+  elements.noteBtn.hidden = !!hasNote;
   saveState();
   renderVerses();
+}
+
+function updateNotesToggle() {
+  if (!elements.notesToggle) return;
+  elements.notesToggle.textContent = state.notesVisible ? "Notes: On" : "Notes: Off";
+  elements.notesToggle.setAttribute("aria-pressed", state.notesVisible ? "true" : "false");
+}
+
+function updateNotesVisibility() {
+  if (state.notesVisible) {
+    renderVerses();
+  } else {
+    closeAllNotePopups();
+  }
+  updateNotesToggle();
 }
 
 function buildSelectionPayload() {
@@ -806,9 +1134,30 @@ function buildMemorizeText(ids) {
 
 function addMemorizeFromSelection() {
   if (state.selected.size === 0) return;
-  const id = `mem-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
-  const verseIds = Array.from(state.selected);
-  state.memorize[id] = { verseIds, ts: Date.now() };
+  const selectedIds = Array.from(state.selected);
+  const memorizedIds = new Set();
+  Object.keys(state.memorize).forEach((memId) => {
+    const ids = state.memorize[memId]?.verseIds || [];
+    ids.forEach((id) => memorizedIds.add(id));
+  });
+  const allMemorized = selectedIds.every((id) => memorizedIds.has(id));
+
+  if (allMemorized) {
+    Object.keys(state.memorize).forEach((memId) => {
+      const entry = state.memorize[memId];
+      if (!entry) return;
+      const nextIds = (entry.verseIds || []).filter((id) => !state.selected.has(id));
+      if (nextIds.length === 0) {
+        delete state.memorize[memId];
+      } else if (nextIds.length !== entry.verseIds.length) {
+        state.memorize[memId] = { verseIds: nextIds, ts: Date.now() };
+      }
+    });
+  } else {
+    const id = `mem-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    state.memorize[id] = { verseIds: selectedIds, ts: Date.now() };
+  }
+
   saveState();
   state.selected.clear();
   elements.palette.hidden = true;
@@ -844,14 +1193,204 @@ function clearHighlight() {
 }
 
 function clearSelection() {
+  const openNoteIds = Array.from(document.querySelectorAll(".note-popup"))
+    .map((popup) => popup.dataset.verseId)
+    .filter(Boolean);
   state.selected.clear();
   elements.palette.hidden = true;
+  elements.xrefBackFloating?.classList.remove("above-palette");
   saveState();
   renderVerses();
+  openNoteIds.forEach((id) => openNotePopup(id));
 }
 
 function getVerseText({ book, chapter, verse }) {
   return state.data?.[book]?.[chapter]?.[verse] || "";
+}
+
+function parseCrossRef(code) {
+  if (!code) return null;
+  const parts = code.trim().split(/\s+/);
+  if (parts.length < 3) return null;
+  const bookCode = parts[0].toUpperCase();
+  const chapter = parts[1];
+  const verse = parts[2];
+  const book = crossRefBookMap[bookCode];
+  if (!book) return null;
+  return { book, chapter, verse };
+}
+
+function formatRefLabel(ref) {
+  return `${ref.book} ${ref.chapter}:${ref.verse}`;
+}
+
+function loadCrossRefs() {
+  if (state.crossRefsReady) return Promise.resolve();
+  const files = Array.from({ length: 32 }, (_, i) => `data/crossrefs/${i + 1}.json`);
+  return Promise.all(files.map((path) => fetch(path).then((res) => res.json())))
+    .then((chunks) => {
+      const map = new Map();
+      chunks.forEach((chunk) => {
+        Object.keys(chunk || {}).forEach((key) => {
+          const entry = chunk[key];
+          if (!entry || !entry.v || !entry.r) return;
+          const ref = parseCrossRef(entry.v);
+          if (!ref) return;
+          const verseId = makeVerseId(ref.book, ref.chapter, ref.verse);
+          const refs = Object.values(entry.r)
+            .map((code) => parseCrossRef(code))
+            .filter(Boolean);
+          if (refs.length) {
+            map.set(verseId, refs);
+          }
+        });
+      });
+      state.crossRefs = map;
+      state.crossRefsReady = true;
+    })
+    .catch((err) => {
+      console.warn("Failed to load cross references", err);
+    });
+}
+
+function loadVerseOfDay() {
+  if (!elements.verseOfDay) return Promise.resolve();
+  const url = "https://labs.bible.org/api/?passage=votd&type=json";
+  return fetch(url)
+    .then((res) => res.json())
+    .then((data) => {
+      if (!Array.isArray(data) || data.length === 0) return;
+      const entry = data[0];
+      const book = normalizeBookName(entry.bookname);
+      const chapter = String(entry.chapter);
+      const verse = String(entry.verse);
+      elements.verseOfDay.textContent = "Verse of the day";
+      elements.verseOfDay.dataset.book = book;
+      elements.verseOfDay.dataset.chapter = chapter;
+      elements.verseOfDay.dataset.verse = verse;
+    })
+    .catch((err) => {
+      console.warn("Failed to load verse of the day", err);
+      elements.verseOfDay.textContent = "Verse of the day";
+    });
+}
+
+function closeAllCrossRefPopups() {
+  document.querySelectorAll(".xref-popup").forEach((popup) => {
+    popup.remove();
+  });
+}
+
+function closeAllNotePopups() {
+  document.querySelectorAll(".note-popup").forEach((popup) => {
+    popup.remove();
+  });
+}
+
+function toggleCrossRefPopup(verseId) {
+  const existing = document.querySelector(`.xref-popup[data-verse-id="${verseId}"]`);
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  closeAllCrossRefPopups();
+  const row = document.querySelector(`.verse-inline[data-verse-id="${verseId}"]`);
+  if (!row) return;
+  state.xrefOrigin = parseVerseId(verseId);
+  const popup = document.createElement("div");
+  popup.className = "xref-popup";
+  popup.dataset.verseId = verseId;
+  renderCrossRefPopup(verseId, popup);
+  row.insertAdjacentElement("afterend", popup);
+}
+
+function toggleNotePopup(verseId) {
+  const existing = document.querySelector(`.note-popup[data-verse-id="${verseId}"]`);
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  openNotePopup(verseId, true);
+}
+
+function openNotePopup(verseId, focus = false) {
+  const row = document.querySelector(`.verse-inline[data-verse-id="${verseId}"]`);
+  if (!row) return;
+  const existing = document.querySelector(`.note-popup[data-verse-id="${verseId}"]`);
+  if (existing) return;
+  const popup = document.createElement("div");
+  popup.className = "note-popup";
+  popup.dataset.verseId = verseId;
+  const textarea = document.createElement("textarea");
+  textarea.className = "note-input";
+  textarea.rows = 1;
+  textarea.placeholder = "Add a note...";
+  textarea.value = state.notes[verseId]?.text || "";
+  const deleteBtn = document.createElement("button");
+  deleteBtn.className = "note-delete";
+  deleteBtn.type = "button";
+  deleteBtn.setAttribute("aria-label", "Delete note");
+  deleteBtn.textContent = "🗑";
+  popup.appendChild(textarea);
+  popup.appendChild(deleteBtn);
+  const resize = () => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  };
+  requestAnimationFrame(resize);
+  popup.addEventListener("click", () => textarea.focus());
+  textarea.addEventListener("input", () => {
+    resize();
+    const value = textarea.value.trim();
+    if (!value) {
+      delete state.notes[verseId];
+    } else {
+      state.notes[verseId] = { text: textarea.value, ts: Date.now() };
+    }
+    saveState();
+  });
+  textarea.addEventListener("blur", () => {
+    const value = textarea.value.trim();
+    if (!value) {
+      delete state.notes[verseId];
+    } else {
+      state.notes[verseId] = { text: textarea.value, ts: Date.now() };
+    }
+    saveState();
+  });
+  deleteBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    delete state.notes[verseId];
+    saveState();
+    popup.remove();
+    renderVerses();
+    updateSelectionUI();
+  });
+  row.insertAdjacentElement("afterend", popup);
+  if (focus) {
+    textarea.focus();
+  }
+}
+
+function updateFloatingBack() {
+  if (!elements.xrefBackFloating) return;
+  elements.xrefBackFloating.hidden = state.navStack.length === 0;
+}
+
+function renderCrossRefPopup(verseId, popup) {
+  if (!popup) return;
+  const refs = state.crossRefs.get(verseId) || [];
+  if (refs.length === 0) {
+    popup.innerHTML = "<div>No cross references found.</div>";
+    return;
+  }
+  const links = refs.map((ref, index) => {
+    const label = formatRefLabel(ref);
+    const sep = index < refs.length - 1 ? ", " : "";
+    const refData = `${ref.book}|${ref.chapter}|${ref.verse}`;
+    return `<button class="xref-link" type="button" data-ref="${refData}">${label}</button>${sep}`;
+  }).join("");
+  popup.innerHTML = `<div class="xref-links">${links}</div>`;
 }
 
 function shouldShowStartup() {
@@ -987,9 +1526,8 @@ function renderHighlights() {
     card.innerHTML = `
       <div class="verse">
         <div class="verse-number">${escapeHtml(`${entry.book} ${entry.chapter}:${entry.verse}`)}</div>
-        <div class="verse-text">${verseHtml}</div>
+        <div class="verse-text muted">${verseHtml}</div>
         <div class="verse-actions">
-          <span class="badge">${color ? color.name : "Highlight"}</span>
         </div>
       </div>
     `;
@@ -1074,11 +1612,17 @@ function renderFavorites() {
         <div class="verse-number">${escapeHtml(`${entry.book} ${entry.chapter}:${entry.verse}`)}</div>
         <div class="verse-text">${verseHtml}</div>
         <div class="verse-actions">
-          <span class="badge">Favorite</span>
           ${highlight ? `<span class="badge">${(palette.find((p) => p.id === highlight.colorId) || {}).name || "Highlight"}</span>` : ""}
+          <button class="ghost" type="button" data-action="remove" data-id="${entry.id}">🗑</button>
         </div>
       </div>
     `;
+    card.querySelector('[data-action="remove"]').addEventListener("click", (event) => {
+      event.stopPropagation();
+      delete state.favorites[entry.id];
+      saveState();
+      renderFavorites();
+    });
     card.addEventListener("click", () => {
       jumpToVerse(entry.book, String(entry.chapter), String(entry.verse));
       applyView("read");
@@ -1113,6 +1657,7 @@ function updateStartupSelect() {
   initCustomSelect(elements.startupSelect);
   syncCustomSelect(elements.startupSelect);
   elements.startupToggle.checked = state.startupEnabled;
+  updateStartupVisibility();
   saveState();
 }
 
@@ -1148,8 +1693,7 @@ function renderMemorize() {
         <div class="verse-number">${escapeHtml(label)}</div>
         <div class="verse-text">${textHtml}</div>
         <div class="verse-actions">
-          <span class="badge">Memorize</span>
-          <button class="ghost" type="button" data-action="remove" data-id="${entry.id}">Remove</button>
+          <button class="ghost" type="button" data-action="remove" data-id="${entry.id}">🗑</button>
         </div>
       </div>
     `;
@@ -1173,6 +1717,85 @@ function renderMemorize() {
   });
 }
 
+function renderNotes() {
+  if (!state.data) return;
+  let entries = Object.keys(state.notes).map((id) => {
+    const { book, chapter, verse } = parseVerseId(id);
+    const note = state.notes[id] || {};
+    return {
+      id,
+      book,
+      chapter: parseInt(chapter, 10),
+      verse: parseInt(verse, 10),
+      text: getVerseText({ book, chapter, verse }),
+      note: note.text || "",
+      ts: note.ts || 0
+    };
+  });
+
+  if (state.searchQuery) {
+    entries = entries.filter((entry) => matchesWordStart(`${entry.book} ${entry.chapter}:${entry.verse} ${entry.text} ${entry.note}`, state.searchQuery));
+  }
+
+  const sort = elements.notesSort?.value || "recency";
+  const bookIndex = Object.fromEntries(bookOrder.map((book, index) => [book, index]));
+  if (sort === "recency") {
+    entries.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  } else if (sort === "oldest") {
+    entries.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  } else if (sort === "book") {
+    entries.sort((a, b) => {
+      const bi = (bookIndex[a.book] ?? 999) - (bookIndex[b.book] ?? 999);
+      if (bi !== 0) return bi;
+      if (a.chapter !== b.chapter) return a.chapter - b.chapter;
+      return a.verse - b.verse;
+    });
+  }
+
+  elements.notesList.innerHTML = "";
+  if (entries.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "card";
+    empty.textContent = state.searchQuery
+      ? "No notes match your search."
+      : "No notes yet. Add a note from the Read view.";
+    elements.notesList.appendChild(empty);
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const verseHtml = highlightText(entry.text, state.searchQuery);
+    const noteHtml = highlightText(entry.note, state.searchQuery);
+    const card = document.createElement("article");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="verse">
+        <div class="verse-number">${escapeHtml(`${entry.book} ${entry.chapter}:${entry.verse}`)}</div>
+        <div class="verse-text">${verseHtml}</div>
+        <div class="verse-actions">
+          <button class="ghost" type="button" data-action="remove" data-id="${entry.id}">🗑</button>
+        </div>
+      </div>
+      <div class="verse-text">${noteHtml}</div>
+    `;
+    card.querySelector('[data-action="remove"]').addEventListener("click", (event) => {
+      event.stopPropagation();
+      delete state.notes[entry.id];
+      saveState();
+      renderNotes();
+      renderVerses();
+    });
+    card.addEventListener("click", () => {
+      jumpToVerse(entry.book, String(entry.chapter), String(entry.verse));
+      applyView("read");
+      state.notesVisible = true;
+      updateNotesVisibility();
+      openNotePopup(entry.id, true);
+    });
+    elements.notesList.appendChild(card);
+  });
+}
+
 function applyView(view) {
   state.view = view;
   saveState();
@@ -1190,6 +1813,7 @@ function applyView(view) {
   }
   if (view !== "read") {
     elements.palette.hidden = true;
+    elements.xrefBackFloating?.classList.remove("above-palette");
   }
 }
 
@@ -1199,6 +1823,7 @@ function jumpToVerse(book, chapter, verse) {
   state.currentVerse = verse;
   saveState();
   elements.bookSelect.value = book;
+  syncCustomSelect(elements.bookSelect);
   updateChapterOptions();
   updateVerseOptions();
   renderVerses();
@@ -1229,6 +1854,7 @@ function handleSearch(query) {
     if (state.view === "highlights") renderHighlights();
     if (state.view === "favorites") renderFavorites();
     if (state.view === "memorize") renderMemorize();
+    if (state.view === "notes") renderNotes();
     return;
   }
   if (clean.length < 2) {
@@ -1269,6 +1895,40 @@ function handleSearch(query) {
   elements.searchResults.hidden = false;
   elements.resultsCount.textContent = `${matches.length} results`;
   elements.viewRead.classList.add("search-active");
+}
+
+function setAuthStatus(text) {
+  if (!elements.authStatus) return;
+  elements.authStatus.textContent = text || "";
+}
+
+function openAuthModal() {
+  if (!elements.authModal) return;
+  elements.authModal.hidden = false;
+  setAuthStatus("");
+  if (elements.authPassword) elements.authPassword.value = "";
+  if (elements.authEmail) elements.authEmail.focus();
+}
+
+function closeAuthModal() {
+  if (!elements.authModal) return;
+  elements.authModal.hidden = true;
+}
+
+function updateAuthButton() {
+  if (!elements.authToggle) return;
+  const icon = elements.authToggle.querySelector(".auth-icon");
+  if (authUser) {
+    elements.authToggle.dataset.auth = "in";
+    elements.authToggle.setAttribute("aria-label", "Sign out");
+    elements.authToggle.title = "Sign out";
+    if (icon) icon.textContent = "⍈";
+  } else {
+    elements.authToggle.dataset.auth = "out";
+    elements.authToggle.setAttribute("aria-label", "Sign in");
+    elements.authToggle.title = "Sign in";
+    if (icon) icon.textContent = "☁︎";
+  }
 }
 
 function bindEvents() {
@@ -1347,6 +2007,13 @@ function bindEvents() {
     window.open(url, "_blank");
   });
 
+  elements.noteBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const targetId = Array.from(state.selected)[0];
+    if (!targetId) return;
+    toggleNotePopup(targetId);
+  });
+
   elements.removeHighlightPill.addEventListener("click", clearHighlight);
   elements.searchInput.addEventListener("input", (event) => handleSearch(event.target.value));
 
@@ -1358,8 +2025,10 @@ function bindEvents() {
   elements.highlightSort?.addEventListener("change", renderHighlights);
   elements.favoriteFilter?.addEventListener("change", renderFavorites);
   elements.favoriteSort?.addEventListener("change", renderFavorites);
+  elements.notesSort?.addEventListener("change", renderNotes);
   elements.startupToggle.addEventListener("change", (event) => {
     state.startupEnabled = event.target.checked;
+    updateStartupVisibility();
     saveState();
   });
 
@@ -1369,6 +2038,14 @@ function bindEvents() {
     saveState();
     if (startupLocked) updateStartupOverlayContent();
   });
+
+  if (elements.notesToggle) {
+    elements.notesToggle.addEventListener("click", () => {
+      state.notesVisible = !state.notesVisible;
+      updateNotesVisibility();
+      saveState();
+    });
+  }
 
   elements.startupContinue.addEventListener("click", hideStartupOverlay);
   elements.windowMinimize.addEventListener("click", () => {
@@ -1406,49 +2083,214 @@ function bindEvents() {
     }
   });
 
+  if (elements.authToggle) {
+    elements.authToggle.addEventListener("click", async () => {
+      if (authUser) {
+        try {
+          await signOut(auth);
+        } catch (err) {
+          console.warn("Sign out failed", err);
+        }
+        return;
+      }
+      openAuthModal();
+    });
+  }
+  if (elements.authClose) {
+    elements.authClose.addEventListener("click", closeAuthModal);
+  }
+  if (elements.authModal) {
+    elements.authModal.addEventListener("click", (event) => {
+      if (event.target === elements.authModal) {
+        closeAuthModal();
+      }
+    });
+  }
+  if (elements.authGoogle) {
+    elements.authGoogle.addEventListener("click", async () => {
+      setAuthStatus("Opening Google sign-in...");
+      try {
+        await signInWithPopup(auth, new GoogleAuthProvider());
+        closeAuthModal();
+      } catch (err) {
+        console.warn("Google sign-in failed", err);
+        setAuthStatus("Google sign-in failed. Check your popup settings and try again.");
+      }
+    });
+  }
+  if (elements.authEmailSignIn) {
+    elements.authEmailSignIn.addEventListener("click", async () => {
+      const email = elements.authEmail?.value?.trim() || "";
+      const password = elements.authPassword?.value || "";
+      if (!email || !password) {
+        setAuthStatus("Enter email and password.");
+        return;
+      }
+      setAuthStatus("Signing in...");
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        closeAuthModal();
+      } catch (err) {
+        console.warn("Email sign-in failed", err);
+        setAuthStatus("Sign-in failed. Check your email and password.");
+      }
+    });
+  }
+  if (elements.authEmailCreate) {
+    elements.authEmailCreate.addEventListener("click", async () => {
+      const email = elements.authEmail?.value?.trim() || "";
+      const password = elements.authPassword?.value || "";
+      if (!email || !password) {
+        setAuthStatus("Enter email and password.");
+        return;
+      }
+      setAuthStatus("Creating account...");
+      try {
+        await createUserWithEmailAndPassword(auth, email, password);
+        closeAuthModal();
+      } catch (err) {
+        console.warn("Account creation failed", err);
+        setAuthStatus("Could not create account. Try a stronger password.");
+      }
+    });
+  }
+
   document.addEventListener("click", (event) => {
     if (state.selected.size === 0) return;
     const isVerseCard = event.target.closest(".card");
     const isVerseInline = event.target.closest(".verse-inline");
     const inPalette = event.target.closest("#palette");
+    const inXref = event.target.closest(".xref-popup");
+    const inNote = event.target.closest(".note-popup");
     if (isVerseCard || isVerseInline || inPalette) return;
+    if (inXref) return;
+    if (inNote) return;
     clearSelection();
   });
 
   document.addEventListener("click", (event) => {
+    const xrefBtn = event.target.closest(".xref-btn");
+    if (xrefBtn) {
+      event.stopPropagation();
+      const verseId = xrefBtn.dataset.verseId;
+      toggleCrossRefPopup(verseId);
+      return;
+    }
+    const noteMarker = event.target.closest(".marker.note");
+    if (noteMarker) {
+      event.stopPropagation();
+      const row = noteMarker.closest(".verse-inline");
+      if (row?.dataset.verseId) {
+        toggleNotePopup(row.dataset.verseId);
+      }
+      return;
+    }
+    const xrefLink = event.target.closest(".xref-link");
+    if (xrefLink) {
+      event.stopPropagation();
+      const ref = xrefLink.dataset.ref;
+      if (ref) {
+        const [book, chapter, verse] = ref.split("|");
+        if (!book || !chapter || !verse) return;
+        const origin = state.xrefOrigin || {
+          book: state.currentBook,
+          chapter: state.currentChapter,
+          verse: state.currentVerse
+        };
+        state.navStack.push(origin);
+        updateFloatingBack();
+        closeAllCrossRefPopups();
+        jumpToVerse(book, chapter, verse);
+      }
+      return;
+    }
     const inSelect = event.target.closest(".select-shell");
     if (inSelect) return;
-    closeAllSelectMenus();
-  });
-
-  document.addEventListener("click", (event) => {
-    if (state.view !== "read") return;
-    if (event.target.closest(".paragraph")) return;
-    if (event.target.closest(".topbar")) return;
-    if (event.target.closest(".controls")) return;
     if (event.target.closest("#palette")) return;
-    if (event.target.closest(".search-results")) return;
-
-    const x = event.clientX;
-    const width = window.innerWidth;
-    if (x < width * 0.25) {
-      goToChapter(-1);
-    } else if (x > width * 0.75) {
-      goToChapter(1);
-    }
+    if (event.target.closest(".xref-popup")) return;
+    if (event.target.closest(".note-popup")) return;
+    if (event.target.closest(".marker.note")) return;
+    closeAllSelectMenus();
+    closeAllCrossRefPopups();
+    document.querySelectorAll(".note-popup").forEach((popup) => {
+      const textarea = popup.querySelector(".note-input");
+      const value = textarea ? textarea.value.trim() : "";
+      if (!value) {
+        const id = popup.dataset.verseId;
+        if (id) {
+          delete state.notes[id];
+        }
+        popup.remove();
+      }
+    });
+    saveState();
   });
+
+  elements.prevChapterBtn.addEventListener("click", () => goToChapter(-1));
+  elements.nextChapterBtn.addEventListener("click", () => goToChapter(1));
+  elements.xrefBackFloating.addEventListener("click", () => {
+    const prev = state.navStack.pop();
+    if (prev) {
+      closeAllCrossRefPopups();
+      jumpToVerse(prev.book, prev.chapter, prev.verse);
+    }
+    updateFloatingBack();
+  });
+  if (elements.verseOfDay) {
+    elements.verseOfDay.addEventListener("click", () => {
+      const { book, chapter, verse } = elements.verseOfDay.dataset;
+      if (book && chapter && verse) {
+        state.navStack.push({
+          book: state.currentBook,
+          chapter: state.currentChapter,
+          verse: state.currentVerse
+        });
+        updateFloatingBack();
+        jumpToVerse(book, chapter, verse);
+      }
+    });
+  }
 
   window.addEventListener("beforeunload", saveState);
+}
+
+function updateStartupVisibility() {
+  const shell = elements.startupShell || elements.startupSelect?.closest(".select-shell");
+  if (!shell) return;
+  const hidden = !state.startupEnabled;
+  shell.hidden = hidden;
+  shell.style.display = hidden ? "none" : "";
+}
+
+function initAuth() {
+  onAuthStateChanged(auth, (user) => {
+    authUser = user || null;
+    authReady = true;
+    updateAuthButton();
+    if (authUser) {
+      loadCloudState(authUser);
+    } else {
+      lastCloudPayload = "";
+      closeAuthModal();
+    }
+  });
 }
 
 loadState();
 buildPalette();
 bindEvents();
+updateStartupVisibility();
+updateNotesToggle();
 if (shouldShowStartup()) {
   showStartupOverlay();
 }
-loadData().catch((err) => {
-  if (appClosed) return;
-  console.error(err);
-  setStatus("Failed to load the NIV data.");
-});
+updateFloatingBack();
+loadData()
+  .then(() => {
+    initAuth();
+  })
+  .catch((err) => {
+    if (appClosed) return;
+    console.error(err);
+    setStatus("Failed to load the NIV data.");
+  });

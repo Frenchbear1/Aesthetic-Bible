@@ -1,0 +1,3 @@
+[submodule "cross-reference-json"]
+	path = cross-reference-json
+	url = https://bitbucket.org/josephilipraja/bible-cross-reference-json.git

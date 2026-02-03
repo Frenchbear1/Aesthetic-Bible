@@ -1,6 +1,5 @@
 const { app, BrowserWindow, ipcMain, Menu, globalShortcut } = require("electron");
 const path = require("path");
-const chokidar = require("chokidar");
 
 let mainWindow = null;
 let normalBounds = null;
@@ -37,7 +36,9 @@ function createWindow() {
 }
 
 function watchForReload() {
-  if (process.env.NODE_ENV !== "development") return;
+  if (app.isPackaged || process.env.NODE_ENV !== "development") return;
+  // Lazy load so packaged builds don't require dev deps.
+  const chokidar = require("chokidar");
   const watcher = chokidar.watch(
     [path.join(__dirname, "index.html"), path.join(__dirname, "styles.css"), path.join(__dirname, "app.js")],
     { ignoreInitial: true }

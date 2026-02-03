@@ -5,11 +5,38 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "set NODE_ENV=development&& electron ."
+    "dev": "set NODE_ENV=development&& electron .",
+    "dist": "electron-builder --win",
+    "icon": "node scripts/gen-icon.js"
   },
   "devDependencies": {
     "electron": "^30.0.0",
     "electronmon": "^2.0.3",
-    "chokidar": "^3.6.0"
+    "chokidar": "^3.6.0",
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^2.1.0"
+  },
+  "build": {
+    "appId": "com.frenchbear1.cleanenglishbible",
+    "productName": "Clean English Bible",
+    "files": [
+      "index.html",
+      "styles.css",
+      "app.js",
+      "main.js",
+      "preload.js",
+      "icon.ico",
+      "data/**",
+      "versions/**",
+      "book_name_mapping.json",
+      "locale_version_map.json",
+      "package.json"
+    ],
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        "nsis"
+      ]
+    }
   }
 }
