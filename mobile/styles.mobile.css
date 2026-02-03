@@ -54,7 +54,8 @@ body::-webkit-scrollbar {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 16px;
+  column-gap: 16px;
+  row-gap: 50px;
   margin-bottom: 12px;
   position: relative;
   -webkit-app-region: no-drag;
@@ -66,6 +67,12 @@ body::-webkit-scrollbar {
   position: sticky;
   top: var(--window-bar-height);
 }
+
+body:not([data-view="read"]) .topbar {
+  display: none;
+}
+
+
 
 .topbar-actions {
   display: none;
@@ -82,24 +89,28 @@ body::-webkit-scrollbar {
 
 .search-fab {
   position: fixed;
-  right: 24px;
-  bottom: calc(24px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px));
-  z-index: 140;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px));
+  z-index: 120;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  width: min(420px, 70vw);
-  height: 52px;
+  width: min(320px, 70vw);
+  height: 48px;
+}
+
+.search-fab.open {
+  z-index: 140;
 }
 
 .search-fab-btn {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: #fff;
   box-shadow: var(--card-shadow);
-  font-size: 18px;
+  font-size: 17px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -117,7 +128,7 @@ body::-webkit-scrollbar {
   padding: 0;
   display: flex;
   align-items: center;
-  width: 52px;
+  width: 48px;
   overflow: hidden;
   transition: width 0.22s ease, padding 0.22s ease;
   margin-left: auto;
@@ -126,7 +137,7 @@ body::-webkit-scrollbar {
 }
 
 .search-fab.open .search-fab-panel {
-  width: min(420px, 70vw);
+  width: min(320px, 70vw);
   padding: 6px 12px;
   pointer-events: auto;
 }
@@ -135,8 +146,12 @@ body::-webkit-scrollbar {
   border: none;
   outline: none;
   width: 100%;
-  font-size: 15px;
+  font-size: 16px;
   font-family: "Optima", "Avenir Next", "Segoe UI", sans-serif;
+  background: #fff;
+  color: #111;
+  -webkit-appearance: none;
+  appearance: none;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -186,7 +201,7 @@ body::-webkit-scrollbar {
   gap: 12px;
   align-items: flex-end;
   grid-column: 1 / -1;
-  padding-top: 2px;
+  padding-top: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -535,7 +550,7 @@ body::-webkit-scrollbar {
 
 .marker-group {
   display: inline-flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
   gap: 6px;
   color: var(--muted);
@@ -638,14 +653,14 @@ body::-webkit-scrollbar {
   padding-right: 44px;
 }
 
-.note-input {
+  .note-input {
   width: 100%;
   min-height: 20px;
   border: none;
   background: transparent;
   padding: 2px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.5;
   resize: none;
   overflow: hidden;
@@ -661,7 +676,8 @@ body::-webkit-scrollbar {
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 18px;
+  line-height: 1;
   color: var(--muted);
 }
 
@@ -797,6 +813,14 @@ body::-webkit-scrollbar {
   justify-content: flex-end;
 }
 
+.search-inline .search-field {
+  width: 100%;
+}
+
+.search-inline .search {
+  width: 100%;
+}
+
 .color-dot {
   width: 12px;
   height: 12px;
@@ -811,6 +835,10 @@ body::-webkit-scrollbar {
   align-items: center;
   flex-wrap: wrap;
   width: 100%;
+}
+
+.memorize-toolbar .toggle {
+  margin-left: auto;
 }
 
 .toggle {
@@ -1251,6 +1279,167 @@ body.startup-locked .app-shell {
     padding: 20px;
   }
 
+}
+
+/* Mobile-specific overrides (starter). Tweak freely. */
+@media (max-width: 740px) {
+  .topbar {
+    grid-template-columns: 1fr;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin: 0;
+    position: static;
+    top: auto;
+  }
+
+  .topbar-actions {
+    display: none;
+  }
+
+  .window-bar,
+  .window-controls {
+    display: none;
+  }
+
+  .app-shell {
+    border-radius: 0;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin: 0;
+    position: static;
+    top: auto;
+  }
+
+  .topbar-actions {
+    display: none;
+  }
+
+  .mobile-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 120;
+    background: transparent;
+    backdrop-filter: none;
+    padding: 8px 0 10px;
+    margin: 0 0 10px;
+  }
+
+  .view-switch {
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 999px;
+    padding: 6px;
+    backdrop-filter: blur(6px);
+  }
+
+  .view-switch {
+    gap: 6px;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .view-switch .tab {
+    flex: 1 1 0;
+    font-size: 11px;
+    padding: 6px 6px;
+    min-width: 0;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  .mobile-quick {
+    display: flex;
+    gap: 8px;
+    padding: 0 4px 2px;
+  }
+
+  body:not([data-view="read"]) .mobile-quick {
+    display: none;
+  }
+
+  .mobile-quick .pill {
+    flex: 1 1 0;
+    border-radius: 999px;
+    padding: 8px 12px;
+    background: #f5f1e9;
+    border: 1px solid #e3dccc;
+    color: #3b342b;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .mobile-quick .auth-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    display: grid;
+    place-items: center;
+    padding: 0;
+  }
+
+  .mobile-quick .auth-btn .auth-icon {
+    font-size: 18px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: none;
+  }
+
+  .mobile-quick .auth-btn[data-auth="in"] .auth-icon {
+    font-size: 18px;
+    transform: none;
+  }
+
+  .mobile-search {
+    padding: 10px 16px 12px;
+  }
+
+  .mobile-search .search-field {
+    width: 100%;
+  }
+
+  .mobile-search .search-field input {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.8);
+    font-size: 16px;
+    font-family: "Optima", "Avenir Next", "Segoe UI", sans-serif;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .auth-modal input {
+    font-size: 16px;
+  }
+
+  #notesToggle {
+    display: none;
+  }
+
+  .palette-floating {
+    width: calc(100% - 24px);
+    max-width: 440px;
+  }
+
+  .palette-actions {
+    flex-wrap: wrap;
+  }
+
+  .palette-grid {
+    flex-wrap: wrap;
+  }
+
+  .palette-swatch {
+    flex: 0 0 auto;
+  }
 }
 
 .note-popup .note-delete {

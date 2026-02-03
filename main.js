@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, globalShortcut } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, globalShortcut, shell } = require("electron");
 const path = require("path");
 
 let mainWindow = null;
@@ -26,7 +26,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, "index.html"));
+  mainWindow.loadFile(path.join(__dirname, "desktop", "index.html"));
   normalBounds = mainWindow.getBounds();
   normalMinSize = mainWindow.getMinimumSize();
 
@@ -40,7 +40,12 @@ function watchForReload() {
   // Lazy load so packaged builds don't require dev deps.
   const chokidar = require("chokidar");
   const watcher = chokidar.watch(
-    [path.join(__dirname, "index.html"), path.join(__dirname, "styles.css"), path.join(__dirname, "app.js")],
+    [
+      path.join(__dirname, "desktop", "index.html"),
+      path.join(__dirname, "desktop", "styles.css"),
+      path.join(__dirname, "desktop", "app.js"),
+      path.join(__dirname, "index.html")
+    ],
     { ignoreInitial: true }
   );
   let reloadTimer = null;
@@ -131,4 +136,15 @@ ipcMain.on("app:startup-mode", (_event, payload) => {
       mainWindow.setBounds(normalBounds);
     }
   }
+});
+
+ipcMain.on("app:open-external", (_event, payload) => {
+  const url = typeof payload === "string" ? payload : payload?.url;
+  if (!url) return;
+  const browser = typeof payload === "object" ? payload.browser : null;
+  if (browser === "edge" && process.platform === "win32") {
+    shell.openExternal(`microsoft-edge:${url}`);
+    return;
+  }
+  shell.openExternal(url);
 });

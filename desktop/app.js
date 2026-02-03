@@ -1,4 +1,4 @@
-const MANIFEST_URL = "./data/manifest.json";
+const MANIFEST_URL = "../data/manifest.json";
 const STORAGE_KEY = "cleanBibleApp.v1";
 
 const bookOrder = [
@@ -548,7 +548,10 @@ function loadTranslation(id) {
   const entry = state.manifest.find((item) => item.id === id) || state.manifest[0];
   if (!entry) return Promise.resolve();
   state.translationId = entry.id;
-  return fetch(entry.path)
+  const translationPath = entry.path && entry.path.startsWith("data/")
+    ? `../${entry.path}`
+    : entry.path;
+  return fetch(translationPath)
     .then((res) => res.json())
     .then((data) => {
       if (appClosed) return;
@@ -1285,7 +1288,7 @@ function formatRefLabel(ref) {
 
 function loadCrossRefs() {
   if (state.crossRefsReady) return Promise.resolve();
-  const files = Array.from({ length: 32 }, (_, i) => `data/crossrefs/${i + 1}.json`);
+  const files = Array.from({ length: 32 }, (_, i) => `../data/crossrefs/${i + 1}.json`);
   return Promise.all(files.map((path) => fetch(path).then((res) => res.json())))
     .then((chunks) => {
       const map = new Map();

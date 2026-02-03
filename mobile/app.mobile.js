@@ -1,4 +1,4 @@
-const MANIFEST_URL = "./data/manifest.json";
+const MANIFEST_URL = "../data/manifest.json";
 const STORAGE_KEY = "cleanBibleApp.v1";
 
 const bookOrder = [
@@ -179,6 +179,11 @@ const elements = {
   topbarActions: document.querySelector(".topbar-actions"),
   topbarControls: document.getElementById("topbarControls"),
   verseOfDay: document.getElementById("verseOfDay"),
+  mobileQuick: document.querySelector(".mobile-quick"),
+  mobileVotd: document.getElementById("mobileVotd"),
+  mobileSearchToggle: document.getElementById("mobileSearchToggle"),
+  mobileSearch: document.getElementById("mobileSearch"),
+  mobileTransferToggle: document.getElementById("mobileTransferToggle"),
   prevChapterBtn: document.getElementById("prevChapterBtn"),
   nextChapterBtn: document.getElementById("nextChapterBtn"),
   xrefBackFloating: document.getElementById("xrefBackFloating"),
@@ -209,6 +214,7 @@ const elements = {
   appMaximize: document.getElementById("appMaximize"),
   appClose: document.getElementById("appClose"),
   notesToggle: document.getElementById("notesToggle"),
+  mobileNotesToggle: document.getElementById("mobileNotesToggle"),
   transferToggle: document.getElementById("transferToggle"),
   transferModal: document.getElementById("transferModal"),
   transferClose: document.getElementById("transferClose"),
@@ -457,6 +463,7 @@ function toggleSearchFab(open) {
     requestAnimationFrame(() => {
       fab.classList.add("open");
       input.focus();
+      setTimeout(() => input.focus(), 60);
     });
   } else {
     fab.classList.remove("open");
@@ -469,16 +476,71 @@ function toggleSearchFab(open) {
   }
 }
 
+let keyboardTracking = false;
+let keyboardUpdate = null;
+let keyboardStopTimer = null;
+let pendingSearchFabClose = false;
+let searchFabClosing = false;
+
 function setupKeyboardOffset() {
   if (!window.visualViewport) return;
   const update = () => {
     const offset = Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
     document.documentElement.style.setProperty("--keyboard-offset", `${offset}px`);
   };
+  keyboardUpdate = update;
   window.visualViewport.addEventListener("resize", update);
   window.visualViewport.addEventListener("scroll", update);
   window.addEventListener("orientationchange", update);
   update();
+}
+
+function startKeyboardTracking() {
+  if (!keyboardUpdate || keyboardTracking) return;
+  keyboardTracking = true;
+  if (keyboardStopTimer) {
+    clearTimeout(keyboardStopTimer);
+    keyboardStopTimer = null;
+  }
+  const tick = () => {
+    if (!keyboardTracking) return;
+    keyboardUpdate();
+    requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function getKeyboardOffset() {
+  if (!window.visualViewport) return 0;
+  return Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
+}
+
+function stopKeyboardTracking({ defer } = {}) {
+  if (!defer) {
+    keyboardTracking = false;
+    if (keyboardUpdate) keyboardUpdate();
+    return;
+  }
+  const start = Date.now();
+  const settle = () => {
+    const offset = getKeyboardOffset();
+    if (offset > 2 && Date.now() - start < 1200) {
+      keyboardUpdate?.();
+      requestAnimationFrame(settle);
+      return;
+    }
+    keyboardTracking = false;
+    keyboardUpdate?.();
+    if (pendingSearchFabClose && offset <= 2 && !searchFabClosing) {
+      pendingSearchFabClose = false;
+      searchFabClosing = true;
+      setTimeout(() => {
+        toggleSearchFab(false);
+        searchFabClosing = false;
+      }, 120);
+    }
+  };
+  keyboardStopTimer = setTimeout(settle, 0);
 }
 
 function syncSearchInputs(value, source) {
@@ -548,7 +610,10 @@ function loadTranslation(id) {
   const entry = state.manifest.find((item) => item.id === id) || state.manifest[0];
   if (!entry) return Promise.resolve();
   state.translationId = entry.id;
-  return fetch(entry.path)
+  const translationPath = entry.path && entry.path.startsWith("data/")
+    ? `../${entry.path}`
+    : entry.path;
+  return fetch(translationPath)
     .then((res) => res.json())
     .then((data) => {
       if (appClosed) return;
@@ -1114,9 +1179,11 @@ function updateSelectionUI() {
 }
 
 function updateNotesToggle() {
-  if (!elements.notesToggle) return;
-  elements.notesToggle.textContent = state.notesVisible ? "Notes: On" : "Notes: Off";
-  elements.notesToggle.setAttribute("aria-pressed", state.notesVisible ? "true" : "false");
+  const buttons = [elements.notesToggle, elements.mobileNotesToggle].filter(Boolean);
+  buttons.forEach((button) => {
+    button.textContent = state.notesVisible ? "Notes: On" : "Notes: Off";
+    button.setAttribute("aria-pressed", state.notesVisible ? "true" : "false");
+  });
 }
 
 function updateNotesVisibility() {
@@ -1285,7 +1352,7 @@ function formatRefLabel(ref) {
 
 function loadCrossRefs() {
   if (state.crossRefsReady) return Promise.resolve();
-  const files = Array.from({ length: 32 }, (_, i) => `data/crossrefs/${i + 1}.json`);
+  const files = Array.from({ length: 32 }, (_, i) => `../data/crossrefs/${i + 1}.json`);
   return Promise.all(files.map((path) => fetch(path).then((res) => res.json())))
     .then((chunks) => {
       const map = new Map();
@@ -1313,7 +1380,7 @@ function loadCrossRefs() {
 }
 
 function loadVerseOfDay() {
-  if (!elements.verseOfDay) return Promise.resolve();
+  if (!elements.verseOfDay && !elements.mobileVotd) return Promise.resolve();
   const url = "https://labs.bible.org/api/?passage=votd&type=json";
   return fetch(url)
     .then((res) => res.json())
@@ -1323,14 +1390,27 @@ function loadVerseOfDay() {
       const book = normalizeBookName(entry.bookname);
       const chapter = String(entry.chapter);
       const verse = String(entry.verse);
-      elements.verseOfDay.textContent = "Verse of the day";
-      elements.verseOfDay.dataset.book = book;
-      elements.verseOfDay.dataset.chapter = chapter;
-      elements.verseOfDay.dataset.verse = verse;
+      if (elements.verseOfDay) {
+        elements.verseOfDay.textContent = "Verse of the day";
+        elements.verseOfDay.dataset.book = book;
+        elements.verseOfDay.dataset.chapter = chapter;
+        elements.verseOfDay.dataset.verse = verse;
+      }
+      if (elements.mobileVotd) {
+        elements.mobileVotd.textContent = "Verse of the day";
+        elements.mobileVotd.dataset.book = book;
+        elements.mobileVotd.dataset.chapter = chapter;
+        elements.mobileVotd.dataset.verse = verse;
+      }
     })
     .catch((err) => {
       console.warn("Failed to load verse of the day", err);
-      elements.verseOfDay.textContent = "Verse of the day";
+      if (elements.verseOfDay) {
+        elements.verseOfDay.textContent = "Verse of the day";
+      }
+      if (elements.mobileVotd) {
+        elements.mobileVotd.textContent = "Verse of the day";
+      }
     });
 }
 
@@ -1916,6 +1996,7 @@ function renderNotes() {
 function applyView(view) {
   state.view = view;
   saveState();
+  document.body.dataset.view = view;
   if (elements.topbarActions) {
     elements.topbarActions.hidden = view !== "read";
   }
@@ -1925,6 +2006,12 @@ function applyView(view) {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.view === view);
   });
+  if (elements.mobileQuick) {
+    elements.mobileQuick.hidden = view !== "read";
+  }
+  if (elements.mobileSearch) {
+    elements.mobileSearch.hidden = true;
+  }
   if (elements.controls) {
     elements.controls.hidden = view !== "read";
   }
@@ -2025,9 +2112,11 @@ function handleSearch(query) {
 }
 
 function setTransferButtonLabel() {
-  if (!elements.transferToggle) return;
-  elements.transferToggle.setAttribute("aria-label", "Import or export data");
-  elements.transferToggle.title = "Import / Export";
+  const buttons = [elements.transferToggle, elements.mobileTransferToggle].filter(Boolean);
+  buttons.forEach((button) => {
+    button.setAttribute("aria-label", "Import or export data");
+    button.title = "Import / Export";
+  });
 }
 
 function bindEvents() {
@@ -2127,6 +2216,16 @@ function bindEvents() {
   }
 
   elements.removeHighlightPill.addEventListener("click", clearHighlight);
+  if (elements.mobileSearchToggle && elements.mobileSearch && elements.searchInput) {
+    elements.mobileSearchToggle.addEventListener("click", () => {
+      const willShow = elements.mobileSearch.hidden;
+      elements.mobileSearch.hidden = !willShow;
+      elements.mobileSearchToggle.setAttribute("aria-expanded", String(willShow));
+      if (willShow) {
+        elements.searchInput.focus();
+      }
+    });
+  }
   const fabInput = document.getElementById("searchFabInput");
   if (elements.searchInput) {
     elements.searchInput.addEventListener("input", (event) => {
@@ -2139,12 +2238,41 @@ function bindEvents() {
       syncSearchInputs(event.target.value, event.target);
       handleSearch(event.target.value);
     });
+    fabInput.addEventListener("focus", () => {
+      startKeyboardTracking();
+    });
+    fabInput.addEventListener("blur", () => {
+      if (!fabInput.value.trim()) {
+        pendingSearchFabClose = true;
+      } else {
+        pendingSearchFabClose = false;
+      }
+      stopKeyboardTracking({ defer: true });
+    });
   }
   const fabBtn = document.getElementById("searchFabBtn");
   if (fabBtn) {
+    const focusFabInput = () => {
+      const fabInput = document.getElementById("searchFabInput");
+      if (!fabInput) return;
+      fabInput.focus();
+      fabInput.click();
+      setTimeout(() => fabInput.focus(), 80);
+    };
+    fabBtn.addEventListener("touchstart", (event) => {
+      event.stopPropagation();
+      toggleSearchFab(true);
+      focusFabInput();
+    });
+    fabBtn.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+      toggleSearchFab(true);
+      focusFabInput();
+    });
     fabBtn.addEventListener("click", (event) => {
       event.stopPropagation();
-      toggleSearchFab();
+      toggleSearchFab(true);
+      focusFabInput();
     });
   }
   document.addEventListener("click", (event) => {
@@ -2178,13 +2306,16 @@ function bindEvents() {
     if (startupLocked) updateStartupOverlayContent();
   });
 
-  if (elements.notesToggle) {
-    elements.notesToggle.addEventListener("click", () => {
+  const bindNotesToggle = (button) => {
+    if (!button) return;
+    button.addEventListener("click", () => {
       state.notesVisible = !state.notesVisible;
       updateNotesVisibility();
       saveState();
     });
-  }
+  };
+  bindNotesToggle(elements.notesToggle);
+  bindNotesToggle(elements.mobileNotesToggle);
 
   elements.startupContinue.addEventListener("click", hideStartupOverlay);
   elements.windowMinimize.addEventListener("click", () => {
@@ -2222,9 +2353,12 @@ function bindEvents() {
     }
   });
 
-  if (elements.transferToggle) {
-    elements.transferToggle.addEventListener("click", openTransferModal);
-  }
+  const bindTransferToggle = (button) => {
+    if (!button) return;
+    button.addEventListener("click", openTransferModal);
+  };
+  bindTransferToggle(elements.transferToggle);
+  bindTransferToggle(elements.mobileTransferToggle);
   if (elements.transferClose) {
     elements.transferClose.addEventListener("click", closeTransferModal);
   }
@@ -2321,9 +2455,10 @@ function bindEvents() {
     }
     updateFloatingBack();
   });
-  if (elements.verseOfDay) {
-    elements.verseOfDay.addEventListener("click", () => {
-      const { book, chapter, verse } = elements.verseOfDay.dataset;
+  const bindVotd = (button) => {
+    if (!button) return;
+    button.addEventListener("click", () => {
+      const { book, chapter, verse } = button.dataset;
       if (book && chapter && verse) {
         state.navStack.push({
           book: state.currentBook,
@@ -2334,7 +2469,9 @@ function bindEvents() {
         jumpToVerse(book, chapter, verse);
       }
     });
-  }
+  };
+  bindVotd(elements.verseOfDay);
+  bindVotd(elements.mobileVotd);
 
   window.addEventListener("beforeunload", saveState);
 }

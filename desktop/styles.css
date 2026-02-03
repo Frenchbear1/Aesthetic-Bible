@@ -52,15 +52,15 @@ body::-webkit-scrollbar {
 
 .topbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: 1fr;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
+  column-gap: 16px;
+  row-gap: 0;
+  margin: 0 0 12px;
   position: relative;
   -webkit-app-region: no-drag;
   z-index: 90;
-  padding-top: 10px;
-  padding-bottom: 10px;
+  padding: 10px 0;
   background: transparent;
   backdrop-filter: blur(6px);
   position: sticky;
@@ -84,12 +84,16 @@ body::-webkit-scrollbar {
   position: fixed;
   right: 24px;
   bottom: calc(24px + env(safe-area-inset-bottom) + var(--keyboard-offset, 0px));
-  z-index: 140;
+  z-index: 120;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   width: min(420px, 70vw);
   height: 52px;
+}
+
+.search-fab.open {
+  z-index: 140;
 }
 
 .search-fab-btn {
@@ -178,6 +182,7 @@ body::-webkit-scrollbar {
   padding: 6px;
   position: static;
   -webkit-app-region: no-drag;
+  justify-self: center;
 }
 
 .topbar-controls {
@@ -186,7 +191,7 @@ body::-webkit-scrollbar {
   gap: 12px;
   align-items: flex-end;
   grid-column: 1 / -1;
-  padding-top: 2px;
+  padding-top: 0;
   -webkit-app-region: no-drag;
 }
 
@@ -276,6 +281,7 @@ body::-webkit-scrollbar {
   align-items: center;
   justify-content: center;
   transform: translateY(-1px);
+  font-size: 18px;
 }
 
 .auth-btn[data-auth="in"] .auth-icon {
@@ -419,6 +425,10 @@ body::-webkit-scrollbar {
   margin-top: 18px;
 }
 
+#view-read .chapter-nav {
+  margin-bottom: 80px;
+}
+
 .nav-btn {
   padding: 10px 16px;
   font-size: 13px;
@@ -527,10 +537,9 @@ body::-webkit-scrollbar {
 
 .verse {
   display: grid;
-  grid-template-columns: minmax(44px, auto) 1fr;
+  grid-template-columns: minmax(44px, auto) 1fr auto;
   gap: 14px;
   align-items: flex-start;
-  position: relative;
 }
 
 .marker-group {
@@ -674,6 +683,18 @@ body::-webkit-scrollbar {
   box-shadow: none;
 }
 
+.note-popup .note-delete {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.note-popup:focus-within .note-delete,
+.note-popup.note-active .note-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .note-block {
   border-left: 3px solid #1f1f1f;
   padding: 8px 12px;
@@ -706,9 +727,6 @@ body::-webkit-scrollbar {
   font-family: "Optima", "Avenir Next", "Segoe UI", sans-serif;
   font-size: 13px;
   color: var(--muted);
-  position: absolute;
-  top: 0;
-  right: 0;
 }
 
 .verse-actions .ghost {
@@ -785,6 +803,10 @@ body::-webkit-scrollbar {
   align-items: center;
 }
 
+.read-toolbar {
+  margin-bottom: 16px;
+}
+
 .search-toggle {
   margin-left: auto;
 }
@@ -811,6 +833,10 @@ body::-webkit-scrollbar {
   align-items: center;
   flex-wrap: wrap;
   width: 100%;
+}
+
+.memorize-toolbar .toggle {
+  margin-left: auto;
 }
 
 .toggle {
@@ -1252,15 +1278,3 @@ body.startup-locked .app-shell {
   }
 
 }
-
-.note-popup .note-delete {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
-}
-.note-popup:focus-within .note-delete,
-.note-popup.note-active .note-delete {
-  opacity: 1;
-  pointer-events: auto;
-}
-

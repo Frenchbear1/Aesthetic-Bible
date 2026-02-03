@@ -23,6 +23,8 @@
       "index.html",
       "styles.css",
       "app.js",
+      "desktop/**",
+      "mobile/**",
       "main.js",
       "preload.js",
       "icon.ico",
