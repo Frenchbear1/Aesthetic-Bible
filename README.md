@@ -1,17 +1,19 @@
 # Aesthetic Bible
 
-A lightweight desktop Bible reader built on Electron. Includes search, highlights, favorites, and a memorize workflow with a startup verse popup.
+A clean, focused Bible reader with reading tools built for everyday use.
 
-## Run locally
+## Capabilities
 
-```bash
-npm install
-npm run dev
-```
+- Read by book, chapter, and verse
+- Search across the text
+- Highlight and favorite verses
+- Add notes to verses
+- Memorize verses and set a startup verse
+- View cross-references
+- Import and export your data
 
-Use `npm start` for a normal launch (no live reload).
+## Use It
 
-## Notes
+For online, cross-platform use, open the deployment link.
 
-- Data lives in `data/` and `versions/`.
-- The app is fully local and runs without a backend.
+To run it on a computer, download `Aesthetic-Bible-Portable.zip` from Assets and open it as an application.
